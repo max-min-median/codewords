@@ -1,19 +1,19 @@
 module Combinatorics (choose, permute) where
 
-choose :: (Integral a, Show a) => a -> a -> a
+import Numeric.Natural (Natural)
+
+choose :: Natural -> Natural -> Natural
 choose n r
-  | n < 0 || r < 0 = error $ "choose: negative argument(s): n=" ++ show n ++ ", r=" ++ show r
   | r > n = 0
   | r == 0 = 1
   | 2 * r > n = n `choose` (n - r)
-  | otherwise = h n r
+  | otherwise = go n r
   where
-    h n' 1 = n'
-    h n' r' = h (n' - 1) (r' - 1) * n' `div` r'
+    go n' 1 = n'
+    go n' r' = go (n' - 1) (r' - 1) * n' `div` r'
 
-permute :: (Integral a, Show a) => a -> a -> a
+permute :: Natural -> Natural -> Natural
 permute n r
-  | n < 0 || r < 0 = error $ "permute: negative argument(s): n=" ++ show n ++ ", r=" ++ show r
   | r > n = 0
   | r == 0 = 1
   | otherwise = product [n-r+1 .. n]

@@ -1,7 +1,6 @@
 module Main (main) where
 
 import Solution (countCodewords, sortString)
-import Numeric.Natural (Natural)
 import Control.Monad (forever, forM_)
 import Text.Read (readMaybe)
 
@@ -11,10 +10,13 @@ main = forever $ do
   str <- getLine
   putStr "Codeword length: "
   lenStr <- getLine
-  putStrLn ("\nGiven: " ++ sortString str ++ "\n")
-  case (readMaybe lenStr :: Maybe Natural) of
-    Nothing  -> putStrLn "Length must be a positive integer."
-    Just len -> let (ans,strsLst) = countCodewords (fromIntegral len) str in do
-      forM_ strsLst $ putStrLn . (\(a, b) -> a ++ ": " ++ b)
+  let lenError = putStrLn "Length must be a positive integer.\n" 
+  case (readMaybe lenStr :: Maybe Int) of
+    Nothing  -> lenError
+    Just len -> if len <= 0 then lenError else do
+      putStrLn ("\nNormalized string: " ++ sortString str ++ "\n")
+      let (result, rows) = countCodewords len str
+      forM_ rows $ (\(pattern, selection, permutations, products) ->
+        putStrLn (show pattern ++ ": " ++ show selection ++ " x " ++ show permutations ++ " = " ++ show products))
       putStrLn "------"
-      putStrLn ("Total: " ++ show ans ++ "\n")
+      putStrLn ("Total: " ++ show result ++ "\n")

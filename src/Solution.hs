@@ -1,20 +1,24 @@
 module Solution (
   groupedCounts,
-  repCountCombinations,
-  showRepCombination,
-  arrangements,
+  possiblePatterns,
+  permutePattern,
   selections,
   countCodewords,
   sortString,
 ) where
 
 import qualified Data.Map as M
-import Data.List (intercalate, sort)
+import Data.List (intercalate, sortOn, zip4)
 import Data.Char (isAlphaNum, toUpper)
 import Data.Tuple (swap)
 import Combinatorics (choose, permute)
 
 type RepCount = (Int, Int)
+
+data Choice = Choice Int Int
+newtype Selection = Selection [Choice]
+data Permutation = Permutation { totalSlots :: Int, repetitions :: [Int] }  -- numerator, denominators
+newtype Pattern = Pattern [RepCount]
 
 
 -- | Finds the grouped frequencies of alphanumeric characters in a given string.
@@ -23,105 +27,138 @@ type RepCount = (Int, Int)
 -- groupedCounts "Hello" --> [(2,1),(1,3)]  (1 pair, 3 uniques)
 -- groupedCounts "Hello, World" --> [(3,1),(2,1),(1,5)]  (1 triple, 1 pair, 5 uniques)
 groupedCounts :: String -> [RepCount]
-groupedCounts s = M.toDescList $ M.fromListWith (+) $ [(rep,1) | (_,rep) <- M.toList (letterCounts s)]
+groupedCounts =
+  M.toDescList
+    . M.fromListWith (+)
+    . map (\(_, reps) -> (reps, 1))
+    . M.toList
+    . letterCounts
 
 
--- letterCounts "Hello, World" --> fromList [('H',1),('W',1),('d',1),('e',1),('l',3),('o',2),('r',1)]
+-- | Count alphanumeric characters, case-insensitively.
+--
+-- Example:
+-- letterCounts "Hello, World" --> fromList [('go',1),('W',1),('d',1),('e',1),('l',3),('o',2),('r',1)]
 letterCounts :: String -> M.Map Char Int
-letterCounts xs = M.fromListWith (+) $ [(toUpper x, 1) | x <- filter isAlphaNum xs]
+letterCounts =
+  M.fromListWith (+)
+    . map (\ch -> (toUpper ch, 1))
+    . filter isAlphaNum
 
 
 sortString :: String -> String
-sortString mp = concat . map (uncurry replicate) . reverse . sort . map swap . M.toList . letterCounts $ mp
+sortString =
+  intercalate " "
+    . map (uncurry replicate)
+    . sortOn (\(reps, ch) -> (-reps, ch))
+    . map swap
+    . M.toList
+    . letterCounts
 
 
 -- | Finds all possible "poker-hand" combinations possible for a specified codeword length, given the grouped frequencies of the input string.
 --
 -- Examples:
--- repCountCombinations 3 [(2,1),(1,2)] --> [[(1,3)],[(2,1),(1,1)]]   patterns: 'ABC', 'AAB'
--- repCountCombinations 3 [(3,1),(2,1),(1,1)] --> [[(1,3)],[(2,1),(1,1)],[(3,1)]]   patterns: 'ABC', 'AAB', 'AAA'
--- repCountCombinations 5 [(3,1),(2,1),(1,1)] --> [[(2,2),(1,1)],[(3,1),(1,2)],[(3,1),(2,1)]]   patterns: ('AABBC', 'AAABC', 'AAABB')
-repCountCombinations :: Int -> [RepCount] -> [[RepCount]]
-repCountCombinations len = reverse . rCC len
+-- possiblePatterns 3 [(2,1),(1,2)] --> [[(1,3)],[(2,1),(1,1)]]   patterns: 'ABC', 'AAB'
+-- possiblePatterns 3 [(3,1),(2,1),(1,1)] --> [[(1,3)],[(2,1),(1,1)],[(3,1)]]   patterns: 'ABC', 'AAB', 'AAA'
+-- possiblePatterns 5 [(3,1),(2,1),(1,1)] --> [[(2,2),(1,1)],[(3,1),(1,2)],[(3,1),(2,1)]]   patterns: ('AABBC', 'AAABC', 'AAABB')
+possiblePatterns :: Int -> [RepCount] -> [Pattern]
+possiblePatterns codewordLength = map Pattern . go codewordLength
   where
-    rCC n _
-      | n == 0 = [[]]
-      | n < 0 = []
-      -- n > 0 from here on
-    rCC _ [] = []
-    rCC n xss@((rep,freq): _) = h (min freq (n `div` rep))
+    go remainingLength _
+      | remainingLength == 0 = [[]]
+      | remainingLength < 0 = []
+    -- remainingLength > 0 from here on
+    go _ [] = []
+    go remainingLength repCounts@((rep,count): _) = concatMap tryUsing [0 .. maxUsed]
       where
-        use = useFromGroup xss
-        h 0 = rCC n (use 0)
-        h r = map ((rep, r):) (rCC (n - rep*r) (use r)) ++ h (r - 1)
+        consume = consumeFromFirstGroup repCounts
+        maxUsed = min count (remainingLength `div` rep)
+        tryUsing 0 = go remainingLength (consume 0)
+        tryUsing r = map ((rep, r):) (go (remainingLength - rep*r) (consume r))
 
 
 -- Helper function to consume a certain amount of chunks from the first (most repetitious) rep-count in the list.
 -- Unconsumed chunks are then treated as being 1 rep less (and combined with the next rep-count if appropriate).
-useFromGroup :: [RepCount] -> Int -> [RepCount]
-useFromGroup [] _ = error "useFromGroup: cannot use from []"
-useFromGroup ((rep,freq): xs) n
-  | n > freq = error $ "useFromGroup: cannot use " ++ show n ++ " from " ++ show (rep,freq)
+consumeFromFirstGroup :: [RepCount] -> Int -> [RepCount]
+consumeFromFirstGroup [] _ = error "consumeFromFirstGroup: cannot use from []"
+consumeFromFirstGroup ((rep,count): xs) n
+  | n > count = error $ "consumeFromFirstGroup: cannot use " ++ show n ++ " from " ++ show (rep,count)
   | rep == 1 = []
-  | freq == n = xs
-  | otherwise = case xs of []                -> [(rep-1,freq-n)]
-                           (rep',freq'): xs' -> if rep-1 == rep' then (rep',freq'+freq-n): xs' else (rep-1,freq-n): (rep',freq'): xs'
+  | count == n = xs
+  | otherwise = case xs of []                -> [(rep-1,count-n)]
+                           (rep',freq'): xs' -> if rep-1 == rep' then (rep',freq'+count-n): xs' else (rep-1,count-n): (rep',freq'): xs'
 
 
--- | Pretty prints a rep-count as a string, where A, B, C etc. represent unique characters of the input string.
---
 -- Examples:
--- showRepCombination [(2,1),(1,1)] --> "AAB"
--- showRepCombination [(4,1),(2,2)] --> "AAAABBCC"
-showRepCombination :: [RepCount] -> String
-showRepCombination xss = h 'A' xss
+-- show (Pattern [(2,1),(1,1)]) --> "AAB"
+-- show (Pattern [(4,1),(2,2)]) --> "AAAABBCC"
+instance Show Pattern where
+  show (Pattern repCounts) = concat $ zipWith replicate expandedCounts symbols
     where
-      h _ [] = ""
-      h ch ((rep,freq): xs)
-        | freq == 0 = h ch xs
-        | otherwise = replicate rep ch ++ h (succ ch) ((rep,freq-1): xs)
-
+      expandedCounts = concatMap (\(rep, count) -> replicate count rep) repCounts
+      symbols = cycle (['A'..'Z'] ++ ['a'..'z'] ++ ['0'..'9'])
 
 -- | Calculates the number of ways to select appropriate characters from the input string, in order to form a particular rep-count.
 -- 
 -- Examples:
--- selections [(3,1),(2,2),(1,1)] [(2,1),(1,1)] (9,"3C1 x 3C1")
+-- selections [(3,1),(2,2),(1,1)] [(2,1),(1,1)] --> Selection [(3,1),(3,1)]  (3C1 x 3C1)
 -- Explanation: Given a string AAABBCCD, we are selecting a codeword of the format XXY. We have 3 ways of selecting X (A, B or C)
 --              and a further 3 ways of selecting Y.
-selections :: [RepCount] -> [RepCount] -> (Int, String)
-selections strRepCounts codeRepCounts = let (res,strLst) = h 1 [] strRepCounts codeRepCounts in (res, intercalate " x " strLst)
+selections :: [RepCount] -> Pattern -> Selection
+selections strRepCounts (Pattern patRepCounts)= Selection (go strRepCounts patRepCounts)
   where
-    h pdt s _ [] = (pdt, s)
-    h _ _ [] _ = error "selections: unable to make combination"
-    h pdt s sss@((sRep,sFreq): _) css@((cRep,cFreq): cs)
-      | sRep > cRep = h pdt s (useFromGroup sss 0) css
-      | sRep == cRep = h (pdt * sFreq `choose` cFreq) (s ++ [show sFreq ++ "C" ++ show cFreq]) (useFromGroup sss cFreq) cs
-      | otherwise = error "selections: unable to make combination"
+    err = error "selections: unable to make combination"
+    go _ [] = []
+    go [] _ = err
+    go sReps@((sRep,sFreq): _) cReps@((cRep,cFreq): cReps')
+      | sRep > cRep = go (consumeFromFirstGroup sReps 0) cReps
+      | sRep == cRep = Choice sFreq cFreq: go (consumeFromFirstGroup sReps cFreq) cReps'
+      | otherwise = err
 
 
--- | Calculates the number of ways to permutate a string of a given rep-count
+-- | Calculates the number of ways to permute a string of a given rep-count
 --
 -- Examples:
--- arrangements [(1,5)] --> (120,"5!")   (arranging 'ABCDE')
--- arrangements [(3,1),(2,2)] --> (210,"7!/3!2!2!")   (arranging 'AAABBCC')
-arrangements :: [RepCount] -> (Int, String)
-arrangements xs = let (res,str) = h 1 "" n xs in (res, show n ++ "!" ++ (if null str then "" else "/" ++ str))
+-- permutePattern [(1,5)] --> Permutation (5,[])   (arranging 'ABCDE' = 5! ways)
+-- permutePattern [(3,1),(2,2)] --> Permutation (7,[3,2,2])   (arranging 'AAABBCC' = 7!/3!2!2! ways)
+permutePattern :: Pattern -> Permutation
+permutePattern (Pattern codeRepCount) = Permutation slots repeats
   where
-    n = sum $ map (\(x, y) -> x * y) xs
-    h pdt s _ [] = (pdt, s)
-    h pdt s n' ((reps,freq): xs')
-      | reps == 1 = (pdt * n' `permute` n', s)
-      | otherwise = h (pdt * n' `choose` reps) (s ++ show reps ++ "!") (n'-reps) (if freq == 1 then xs' else (reps,freq-1): xs')
+    slots = sum $ map (\(x, y) -> x * y) codeRepCount
+    repeats = concatMap (uncurry replicate) . map swap . filter (\(rep, _) -> rep > 1) $ codeRepCount
 
 
--- | Solves the codeword problem. Given a certain length and an input string, finds the number of possible codeword of that length
--- which can be form from the input string.
-countCodewords :: Int -> String -> (Int, [(String, String)])
-countCodewords n s = (sum . map fst $ combined, map snd combined)
+calculateSelections :: Selection -> Integer
+calculateSelections (Selection nCrList) =
+    fromIntegral . product . map (\(Choice n r) -> fromIntegral n `choose` fromIntegral r) $ nCrList
+
+
+calculatePermutations :: Permutation -> Integer
+calculatePermutations perm = go (totalSlots perm) (repetitions perm)
+    where
+      go num [] = fromIntegral (fromIntegral num `permute` fromIntegral num)
+      go num (denom: denoms) = fromIntegral (fromIntegral num `choose` fromIntegral denom) * go (num - denom) denoms
+
+instance Show Selection where
+  show (Selection nCrList) = intercalate " x " . map (\(Choice n r) -> show n ++ "C" ++ show r) $ nCrList
+
+instance Show Permutation where
+  show (Permutation slots repeats)
+    | null repeats = formatFactorial slots
+    | otherwise = formatFactorial slots ++ "/" ++ concatMap formatFactorial repeats
+    where
+      formatFactorial x = show x ++ "!"
+
+
+-- | Solves the codeword problem. Given a certain length and an input string, finds the number of possible codewords of that length
+-- which can be formed from the input string.
+countCodewords :: Int -> String -> (Integer, [(Pattern, Selection, Permutation, Integer)])
+countCodewords codewordLength str = (result, zip4 patterns allSelections permutations products)
   where
-    strRepCounts = groupedCounts s
-    rccs = repCountCombinations n strRepCounts
-    -- feed each rcc into selections and arrangements
-    selects = map (selections strRepCounts) rccs
-    arrangemts = map arrangements rccs
-    combined = zipWith3 (\(sels, selStr) (arrs, arrStr) rcc -> let pdt = sels * arrs in (pdt, (showRepCombination rcc, selStr ++ " x " ++ arrStr ++ " = " ++ show pdt))) selects arrangemts rccs
+    strRepCounts = groupedCounts str
+    patterns = possiblePatterns codewordLength strRepCounts
+    allSelections = map (selections strRepCounts) patterns
+    permutations = map permutePattern patterns
+    products = zipWith (*) (map calculateSelections allSelections) (map calculatePermutations permutations)
+    result = sum products
