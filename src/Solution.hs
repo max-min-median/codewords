@@ -1,8 +1,4 @@
 module Solution (
-  groupedCounts,
-  possiblePatterns,
-  permutePattern,
-  selections,
   countCodewords,
   sortString,
 ) where
@@ -38,7 +34,7 @@ groupedCounts =
 -- | Count alphanumeric characters, case-insensitively.
 --
 -- Example:
--- letterCounts "Hello, World" --> fromList [('go',1),('W',1),('d',1),('e',1),('l',3),('o',2),('r',1)]
+-- letterCounts "Hello, World" --> fromList [('H',1),('W',1),('D',1),('E',1),('L',3),('O',2),('R',1)]
 letterCounts :: String -> M.Map Char Int
 letterCounts =
   M.fromListWith (+)
@@ -106,7 +102,7 @@ instance Show Pattern where
 -- Explanation: Given a string AAABBCCD, we are selecting a codeword of the format XXY. We have 3 ways of selecting X (A, B or C)
 --              and a further 3 ways of selecting Y.
 selections :: [RepCount] -> Pattern -> Selection
-selections strRepCounts (Pattern patRepCounts)= Selection (go strRepCounts patRepCounts)
+selections strRepCounts (Pattern patRepCounts) = Selection (go strRepCounts patRepCounts)
   where
     err = error "selections: unable to make combination"
     go _ [] = []
